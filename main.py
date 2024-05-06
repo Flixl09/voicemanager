@@ -1,9 +1,11 @@
 import datetime
 import enum
 import json
+from configparser import ConfigParser
 import discord
 from discord.abc import GuildChannel
-from discord import Permissions, Embed, Interaction, app_commands, Guild, SelectOption, VoiceChannel
+from discord import Permissions, Embed, Interaction, app_commands, Guild, SelectOption, VoiceChannel, Member, \
+    VoiceState, PermissionOverwrite
 from discord.ext.commands import Bot, Context, has_permissions, bot_has_guild_permissions, check
 from discord.ext import tasks, commands
 from discord.ui import View, Button, Select, TextInput, ChannelSelect
@@ -25,7 +27,8 @@ bot = Bot(
 )
 
 data = {}
-
+config: ConfigParser = ConfigParser()
+config.read("some.ini")
 
 class CustomIDs(enum.Enum):
     SHOWCHANNELS = "showchannels"
@@ -99,19 +102,25 @@ def create_view(show: bool = False, add: bool = False, remove: bool = False, bac
     return v
 
 
-def create_embed(color, author):
+def create_embed(color, author, guild: Guild):
     emb = Embed(colour=color, title="VoiceManager", timestamp=datetime.datetime.now())
     emb.add_field(name="Show Channels", value="Zeigt dir alle verwalteten Channels an", inline=False)
     emb.add_field(name="Add Channel", value="Füge neue Channel hinzu", inline=False)
     emb.add_field(name="Remove Channels", value="Entferne Channels", inline=False)
+    if data["servers"][str(guild.id)]["temps"]:
+        chs = ""
+        for x in data["server"][str(guild.id)]["temps"]:
+            chs += guild.get_channel(x).mention + "\n"
+        emb.add_field(name="Active Temps", value=chs)
     emb.set_footer(text=f"Angefragt von {author.display_name} ID:{author.id}")
     return emb
 
 
 @bot.hybrid_command(name="manage")
+@commands.guild_only()
 @check(check_perms)
 async def manage(ctx: Context):
-    emb = create_embed(ctx.author.roles[0].color, ctx.author)
+    emb = create_embed(ctx.author.roles[0].color, ctx.author, ctx.guild)
     v = create_view()
 
     await ctx.send(embed=emb, view=v)
@@ -145,6 +154,7 @@ async def on_interaction(i: Interaction):
         return
     if i.user.id != int(i.message.embeds[0].footer.text.split("ID:")[1]):
         await i.message.reply(f"{i.user.mention} Du hast dieses Panel nicht angefordert!", delete_after=5)
+        return
     custom_id = i.data["custom_id"]
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.SHOWCHANNELS:
@@ -230,7 +240,7 @@ async def on_interaction(i: Interaction):
         await i.response.edit_message(embed=emb, view=view)
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.BACK:
-        await i.response.edit_message(embed=create_embed(i.user.roles[0].color, i.user), view=create_view())
+        await i.response.edit_message(embed=create_embed(i.user.roles[0].color, i.user, i.guild), view=create_view())
 
     if CustomIDs(custom_id) == CustomIDs.SELECTADDCHANNELS:
         chs = [i.guild.get_channel(int(x)) for x in i.data["values"]]
@@ -270,5 +280,70 @@ async def on_guild_channel_delete(ch: GuildChannel):
     if type(ch) == VoiceChannel:
         if ch.id in data["servers"][str(ch.guild.id)]["channels"]:
             data["servers"][str(ch.guild.id)]["channels"].remove(ch.id)
+        if ch.id in data["servers"][str(ch.guild.id)]["temps"]:
+            data["servers"][str(ch.guild.id)]["temps"].remove(ch.id)
 
-bot.run("MTIzMDIwNzQ0NTUxOTk1ODE0OA.GjnMzd.lcZyXrnR8yRmWJCMIDDwg1e-MWLi6t1dYCB87E")
+
+@bot.event
+async def on_guild_remove(guild: Guild):
+    if guild.id in data["servers"]:
+        data["servers"].remove(str(guild.id))
+
+
+async def create_channel(memb: Member, cat: discord.CategoryChannel):
+    guild = memb.guild
+    ch = await guild.create_voice_channel(name=memb.display_name + "'s Channel",
+                                          category=cat,
+                                          user_limit=5,
+                                          reason="VoiceManager Temp Channel")
+    ov = PermissionOverwrite()
+    ov.manage_messages = True
+    ov.manage_channels = True
+    ov.manage_permissions = True
+    ov.mute_members = True
+    ov.deafen_members = True
+    ov.move_members = True
+    data["servers"][str(guild.id)]["temps"].append(ch.id)
+    await ch.set_permissions(memb, overwrite=ov)
+    return ch
+
+
+@bot.event
+async def on_voice_state_update(memb: Member, bef: VoiceState, aft: VoiceState):
+    guild = memb.guild
+    if bef.channel:
+        if bef.channel.id in data["servers"][str(guild.id)]["temps"]:
+            if len(bef.channel.members) == 0:
+                await bef.channel.delete()
+                data["servers"][str(guild.id)]["temps"].remove(bef.channel.id)
+
+    if aft.channel:
+        if aft.channel.id in data["servers"][str(guild.id)]["channels"]:
+            ch = await create_channel(memb, aft.channel.category)
+            await memb.move_to(ch)
+
+
+####################################################################################################################
+
+
+"""
+███████ ██████  ██████   ██████  ██████      ██   ██  █████  ███    ██ ██████  ██      ██ ███    ██  ██████  
+██      ██   ██ ██   ██ ██    ██ ██   ██     ██   ██ ██   ██ ████   ██ ██   ██ ██      ██ ████   ██ ██       
+█████   ██████  ██████  ██    ██ ██████      ███████ ███████ ██ ██  ██ ██   ██ ██      ██ ██ ██  ██ ██   ███ 
+██      ██   ██ ██   ██ ██    ██ ██   ██     ██   ██ ██   ██ ██  ██ ██ ██   ██ ██      ██ ██  ██ ██ ██    ██ 
+███████ ██   ██ ██   ██  ██████  ██   ██     ██   ██ ██   ██ ██   ████ ██████  ███████ ██ ██   ████  ██████  
+"""
+
+
+####################################################################################################################
+
+@manage.error
+async def manage_error(ctx: Context, err):
+    if isinstance(err, commands.NoPrivateMessage):
+        await ctx.send("Keine DMS!!", delete_after=5)
+    elif isinstance(err, commands.CheckFailure):
+        await ctx.send("Du hast keine Berechtigung für diesen Command!", ephemeral=True, delete_after=5)
+        await ctx.message.delete()
+
+
+bot.run(config["token"]["token"])
