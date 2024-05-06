@@ -109,7 +109,7 @@ def create_embed(color, author, guild: Guild):
     emb.add_field(name="Remove Channels", value="Entferne Channels", inline=False)
     if data["servers"][str(guild.id)]["temps"]:
         chs = ""
-        for x in data["server"][str(guild.id)]["temps"]:
+        for x in data["servers"][str(guild.id)]["temps"]:
             chs += guild.get_channel(x).mention + "\n"
         emb.add_field(name="Active Temps", value=chs)
     emb.set_footer(text=f"Angefragt von {author.display_name} ID:{author.id}")
@@ -181,7 +181,7 @@ async def on_interaction(i: Interaction):
 
         channels: list = []
         for channel in i.guild.voice_channels:
-            if channel.id not in data["servers"][str(i.guild_id)]["channels"]:
+            if channel.id not in data["servers"][str(i.guild_id)]["channels"] and channel.id not in data["servers"][str(i.guild_id)]["temps"] and channel is not i.guild.afk_channel:
                 op = SelectOption(
                     label=channel.name,
                     value=str(channel.id),
