@@ -31,12 +31,19 @@ config: ConfigParser = ConfigParser()
 config.read("some.ini")
 
 class CustomIDs(enum.Enum):
+    ## Main Buttons
     SHOWCHANNELS = "showchannels"
     ADDCHANNELS = "addchannels"
     REMOVECHANNELS = "removechannels"
+    CONFIGPERMISSIONS = "configpermissions"
     BACK = "back"
+    ## Selects
     SELECTADDCHANNELS = "selectaddchannels"
     SELECTREMCHANNELS = "selectremchannels"
+    SELECTPERMISSIONS = "selectpermissions"
+    ## Perms
+    EVERYONEPERMISSIONS = "everyonepermissions"
+    OWNERPERMISSIONS = "ownerpermissions"
 
     def __str__(self):
         return self.value
@@ -86,19 +93,38 @@ def check_perms(ctx: Context):
     return ctx.author.guild_permissions.manage_channels and ctx.guild.me.guild_permissions.manage_channels
 
 
-def create_view(show: bool = False, add: bool = False, remove: bool = False, back: bool = True):
+def create_view(show: bool = False, add: bool = False, remove: bool = False, back: bool = True, config: bool = False):
     v = View()
     v.add_item(
-        Button(style=ButtonStyle.blurple, label="Show Channels", custom_id=str(CustomIDs.SHOWCHANNELS), emoji="📜",
+        Button(style=ButtonStyle.blurple,
+               label="Show Channels",
+               custom_id=str(CustomIDs.SHOWCHANNELS),
+               emoji="📜",
                disabled=show))
     v.add_item(
-        Button(style=ButtonStyle.green, label="Add Channel", custom_id=str(CustomIDs.ADDCHANNELS), emoji="✔️",
+        Button(style=ButtonStyle.green,
+               label="Add Channel",
+               custom_id=str(CustomIDs.ADDCHANNELS),
+               emoji="✔️",
                disabled=add))
     v.add_item(
-        Button(style=ButtonStyle.red, label="Remove Channel", custom_id=str(CustomIDs.REMOVECHANNELS), emoji="❌",
+        Button(style=ButtonStyle.red,
+               label="Remove Channel",
+               custom_id=str(CustomIDs.REMOVECHANNELS),
+               emoji="❌",
                disabled=remove))
     v.add_item(
-        Button(style=ButtonStyle.grey, label="Back", custom_id=str(CustomIDs.BACK), emoji="🔙", disabled=back))
+        Button(style=ButtonStyle.primary,
+               label="Config Permissions",
+               custom_id=str(CustomIDs.CONFIGPERMISSIONS),
+               emoji="⚖️",
+               disabled=config))
+    v.add_item(
+        Button(style=ButtonStyle.grey,
+               label="Back",
+               custom_id=str(CustomIDs.BACK),
+               emoji="🔙",
+               disabled=back))
     return v
 
 
@@ -107,6 +133,7 @@ def create_embed(color, author, guild: Guild):
     emb.add_field(name="Show Channels", value="Zeigt dir alle verwalteten Channels an", inline=False)
     emb.add_field(name="Add Channel", value="Füge neue Channel hinzu", inline=False)
     emb.add_field(name="Remove Channels", value="Entferne Channels", inline=False)
+    emb.add_field(name="Config Permissions", value="Konfiguriere die Permissions für die Besitzer der Channels und andere", inline=False)
     if data["servers"][str(guild.id)]["temps"]:
         chs = ""
         for x in data["servers"][str(guild.id)]["temps"]:
