@@ -29,6 +29,10 @@ bot = Bot(
 data = {}
 config: ConfigParser = ConfigParser()
 config.read("some.ini")
+voiceperms = []
+for x in Permissions.voice():
+    if x[1]:
+        voiceperms.append(x[0])
 
 class CustomIDs(enum.Enum):
     ## Main Buttons
@@ -40,7 +44,10 @@ class CustomIDs(enum.Enum):
     ## Selects
     SELECTADDCHANNELS = "selectaddchannels"
     SELECTREMCHANNELS = "selectremchannels"
-    SELECTPERMISSIONS = "selectpermissions"
+    SELECTADDOWNERPERMISSIONS = "selectaddownerpermissions"
+    SELECTREMOWNERPERMISSIONS = "selectremownerpermissions"
+    SELECTADDEVERYONEPERMISSIONS = "selectaddeveryonepermissions"
+    SELECTREMEVERYONEPERMISSIONS = "selectremeveryonepermissions"
     ## Perms
     EVERYONEPERMISSIONS = "everyonepermissions"
     OWNERPERMISSIONS = "ownerpermissions"
@@ -133,7 +140,8 @@ def create_embed(color, author, guild: Guild):
     emb.add_field(name="Show Channels", value="Zeigt dir alle verwalteten Channels an", inline=False)
     emb.add_field(name="Add Channel", value="Füge neue Channel hinzu", inline=False)
     emb.add_field(name="Remove Channels", value="Entferne Channels", inline=False)
-    emb.add_field(name="Config Permissions", value="Konfiguriere die Permissions für die Besitzer der Channels und andere", inline=False)
+    emb.add_field(name="Config Permissions",
+                  value="Konfiguriere die Permissions für die Besitzer der Channels und andere", inline=False)
     if data["servers"][str(guild.id)]["temps"]:
         chs = ""
         for x in data["servers"][str(guild.id)]["temps"]:
@@ -173,6 +181,70 @@ async def on_ready():
         print(e)
 
 
+async def create_emb_owner(i: Interaction):
+    userperms = Permissions(data["servers"][str(i.guild_id)]["config"]["owner"])
+    userpermstext = "```"
+    for x in userperms:
+        if x[0] in voiceperms:
+            userpermstext += x[0]
+            if x[1]:
+                userpermstext += "✔️"
+            else:
+                userpermstext += "❌"
+            userpermstext += "\n"
+    userpermstext += "```"
+    emb = Embed(title="VoiceManager",
+                color=i.message.embeds[0].colour,
+                description="Wähle alle Permissions aus, welche der **User** vom Tempchannel haben darf!\n"
+                            "Derzeit hat der User diese Permissions: \n" + userpermstext,
+                timestamp=datetime.datetime.now())
+    emb.set_footer(text=f"Angefragt von {i.user.display_name} ID:{i.user.id}")
+
+    remperms = Permissions.voice() & userperms
+    rempermsop = []
+    for x in remperms:
+        if x[1]:
+            op = SelectOption(
+                label=x[0],
+                value=x[0],
+                emoji="🔨"
+            )
+            rempermsop.append(op)
+
+    experms = Permissions.voice() & ~userperms
+    expermsop = []
+    for x in experms:
+        if x[1]:
+            op = SelectOption(
+                label=x[0],
+                value=x[0],
+                emoji="🔨"
+            )
+            expermsop.append(op)
+    view = View()
+    if len(expermsop) > 0:
+        view.add_item(
+            Select(
+                custom_id=str(CustomIDs.SELECTADDOWNERPERMISSIONS),
+                placeholder="Add Permissions to the User ...",
+                min_values=1,
+                max_values=len(expermsop),
+                options=expermsop))
+    if len(rempermsop) > 0:
+        view.add_item(
+            Select(
+                custom_id=str(CustomIDs.SELECTREMOWNERPERMISSIONS),
+                placeholder="Remove Permissions from the User ...",
+                min_values=1,
+                max_values=len(rempermsop),
+                options=rempermsop))
+    view.add_item(
+        Button(style=ButtonStyle.grey,
+               label="Back",
+               custom_id=str(CustomIDs.BACK),
+               emoji="🔙"))
+    await i.response.edit_message(embed=emb, view=view)
+
 @bot.event
 async def on_interaction(i: Interaction):
     if i.is_expired():
@@ -208,7 +280,8 @@ async def on_interaction(i: Interaction):
 
         channels: list = []
         for channel in i.guild.voice_channels:
-            if channel.id not in data["servers"][str(i.guild_id)]["channels"] and channel.id not in data["servers"][str(i.guild_id)]["temps"] and channel is not i.guild.afk_channel:
+            if channel.id not in data["servers"][str(i.guild_id)]["channels"] and channel.id not in \
+                    data["servers"][str(i.guild_id)]["temps"] and channel is not i.guild.afk_channel:
                 op = SelectOption(
                     label=channel.name,
                     value=str(channel.id),
@@ -307,7 +380,7 @@ async def on_interaction(i: Interaction):
                     description="Wähle wessen Rechte du bearbeiten möchtest. (Tempchannel Owner, Tempchannel User)",
                     timestamp=datetime.datetime.now())
         emb.set_footer(text=f"Angefragt von {i.user.display_name} ID:{i.user.id}")
-        view = create_view(config=True, back=False, add=True, remove=True, show=True)
+        view = View()
         view.add_item(
             Button(style=ButtonStyle.blurple,
                    label="Owner",
@@ -318,28 +391,43 @@ async def on_interaction(i: Interaction):
                    label="User",
                    custom_id=str(CustomIDs.EVERYONEPERMISSIONS),
                    emoji="🧑"))
+        view.add_item(
+            Button(style=ButtonStyle.grey,
+                   label="Back",
+                   custom_id=str(CustomIDs.BACK),
+                   emoji="🔙"))
         await i.response.edit_message(embed=emb, view=view)
 
     if CustomIDs(custom_id) == CustomIDs.OWNERPERMISSIONS:
-        emb = Embed(title="VoiceManager",
-                    color=i.message.embeds[0].colour,
-                    description="Wähle alle Permissions aus, welche der **Owner** vom Tempchannel haben darf!",
-                    timestamp=datetime.datetime.now())
-        emb.set_footer(text=f"Angefragt von {i.user.display_name} ID:{i.user.id}")
-        view = create_view(config=True, back=False, add=True, remove=True, show=True)
-        sel = Select(
-            custom_id=str(CustomIDs.SELECTPERMISSIONS),
-            placeholder="Choose Permissions wisely ...",
-            min_values=1)
-        for x in Permissions.voice():
-            if bool(x):
-                sel.add_option(label=x[0],
-                               value=x[0],
-                               description=x[1],
-                               emoji="🔨")
-        view.add_item(sel)
+        await create_emb_owner(i)
 
-        await i.response.edit_message(embed=emb, view=view)
+    if CustomIDs(custom_id) == CustomIDs.SELECTADDOWNERPERMISSIONS:
+        owner = Permissions(data["servers"][str(i.guild_id)]["config"]["owner"])
+        pp = {}
+        for x in i.data["values"]:
+            pp[x] = True
+        owner.update(**pp)
+        data["servers"][str(i.guild_id)]["config"]["owner"] = owner.value
+
+        await create_emb_owner(i)
+
+        await i.message.reply(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+
+    if CustomIDs(custom_id) == CustomIDs.SELECTREMOWNERPERMISSIONS:
+        owner = Permissions(data["servers"][str(i.guild_id)]["config"]["owner"])
+        pp = {}
+        for x in i.data["values"]:
+            pp[x] = False
+        owner.update(**pp)
+        data["servers"][str(i.guild_id)]["config"]["owner"] = owner.value
+
+        await create_emb_owner(i)
+
+        await i.message.reply(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+
+
+
+
 
 @bot.event
 async def on_guild_channel_delete(ch: GuildChannel):
@@ -352,8 +440,19 @@ async def on_guild_channel_delete(ch: GuildChannel):
 
 @bot.event
 async def on_guild_remove(guild: Guild):
-    if guild.id in data["servers"]:
+    if str(guild.id) in data["servers"]:
         data["servers"].remove(str(guild.id))
+
+
+@bot.event
+async def on_guild_join(guild: Guild):
+    data["servers"][str(guild.id)] = {
+        "channels": [],
+        "config": {
+            "owner": Permissions.voice().value,
+            "user": Permissions(40136514470400).value
+        },
+        "temps": []}
 
 
 async def create_channel(memb: Member, cat: discord.CategoryChannel):
