@@ -301,6 +301,45 @@ async def on_interaction(i: Interaction):
 
         await i.response.edit_message(embed=emb, view=view)
 
+    if CustomIDs(custom_id) == CustomIDs.CONFIGPERMISSIONS:
+        emb = Embed(title="VoiceManager",
+                    color=i.message.embeds[0].colour,
+                    description="Wähle wessen Rechte du bearbeiten möchtest. (Tempchannel Owner, Tempchannel User)",
+                    timestamp=datetime.datetime.now())
+        emb.set_footer(text=f"Angefragt von {i.user.display_name} ID:{i.user.id}")
+        view = create_view(config=True, back=False, add=True, remove=True, show=True)
+        view.add_item(
+            Button(style=ButtonStyle.blurple,
+                   label="Owner",
+                   custom_id=str(CustomIDs.OWNERPERMISSIONS),
+                   emoji="👑"))
+        view.add_item(
+            Button(style=ButtonStyle.green,
+                   label="User",
+                   custom_id=str(CustomIDs.EVERYONEPERMISSIONS),
+                   emoji="🧑"))
+        await i.response.edit_message(embed=emb, view=view)
+
+    if CustomIDs(custom_id) == CustomIDs.OWNERPERMISSIONS:
+        emb = Embed(title="VoiceManager",
+                    color=i.message.embeds[0].colour,
+                    description="Wähle alle Permissions aus, welche der **Owner** vom Tempchannel haben darf!",
+                    timestamp=datetime.datetime.now())
+        emb.set_footer(text=f"Angefragt von {i.user.display_name} ID:{i.user.id}")
+        view = create_view(config=True, back=False, add=True, remove=True, show=True)
+        sel = Select(
+            custom_id=str(CustomIDs.SELECTPERMISSIONS),
+            placeholder="Choose Permissions wisely ...",
+            min_values=1)
+        for x in Permissions.voice():
+            if bool(x):
+                sel.add_option(label=x[0],
+                               value=x[0],
+                               description=x[1],
+                               emoji="🔨")
+        view.add_item(sel)
+
+        await i.response.edit_message(embed=emb, view=view)
 
 @bot.event
 async def on_guild_channel_delete(ch: GuildChannel):
