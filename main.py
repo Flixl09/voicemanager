@@ -488,7 +488,7 @@ async def on_interaction(i: Interaction):
 
         await create_emb_owner(i)
 
-        await i.response.send(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.SELECTREMOWNERPERMISSIONS:
         owner = Permissions(data["servers"][str(i.guild_id)]["config"]["owner"])
@@ -500,7 +500,7 @@ async def on_interaction(i: Interaction):
 
         await create_emb_owner(i)
 
-        await i.response.send(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
     ####################################################################################################################
 
     if CustomIDs(custom_id) == CustomIDs.BUTTONFORSELECTROLE:
