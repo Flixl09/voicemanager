@@ -5,7 +5,7 @@ from configparser import ConfigParser
 import discord
 from discord.abc import GuildChannel
 from discord import Permissions, Embed, Interaction, app_commands, Guild, SelectOption, VoiceChannel, Member, \
-    VoiceState, PermissionOverwrite, TextStyle, Role
+    VoiceState, PermissionOverwrite, TextStyle, Role, InteractionType
 from discord.ext.commands import Bot, Context, has_permissions, bot_has_guild_permissions, check
 from discord.ext import tasks, commands
 from discord.ui import View, Button, Select, TextInput, ChannelSelect, RoleSelect, Modal
@@ -54,6 +54,12 @@ class CustomIDs(enum.Enum):
     ## Perms
     ROLEPERMISSIONS = "rolepermissions"
     OWNERPERMISSIONS = "ownerpermissions"
+    ## User Temp Config
+    CHANNELNAME = "channelname"
+    MEMBERLIMIT = "memberlimit"
+    MANAGERS = "managers"
+    VISIBILITY = "visibility"
+    USERBACK = "userback"
 
     def __str__(self):
         return self.value
@@ -71,7 +77,7 @@ class CustomIDs(enum.Enum):
 """
 
 
-@tasks.loop(minutes=1)
+@tasks.loop(seconds=20)
 async def get_json_data():
     global data
     if data == {}:
@@ -138,30 +144,106 @@ def create_view(show: bool = False, add: bool = False, remove: bool = False, bac
     return v
 
 
-def create_embed(color, author, guild: Guild):
-    emb = Embed(colour=color, title="VoiceManager", timestamp=datetime.datetime.now())
-    emb.add_field(name="Show Channels", value="Zeigt dir alle verwalteten Channels an", inline=False)
-    emb.add_field(name="Add Channel", value="Füge neue Channel hinzu", inline=False)
-    emb.add_field(name="Remove Channels", value="Entferne Channels", inline=False)
-    emb.add_field(name="Config Permissions",
-                  value="Konfiguriere die Permissions für die Besitzer der Channels und andere", inline=False)
+def create_admin_panel(color, author, guild: Guild):
+    emb = Embed(colour=color,
+                title="VoiceManager",
+                timestamp=datetime.datetime.now(),
+                description="Manage deinen Server") \
+        .add_field(name="Show Channels", value="Zeigt dir alle verwalteten Channels an", inline=False) \
+        .add_field(name="Add Channel", value="Füge neue Channel hinzu", inline=False) \
+        .add_field(name="Remove Channels", value="Entferne Channels", inline=False) \
+        .add_field(name="Config Permissions",
+                   value="Konfiguriere die Permissions für die Besitzer der Channels und andere", inline=False)
     if data["servers"][str(guild.id)]["temps"]:
         chs = ""
-        for x in data["servers"][str(guild.id)]["temps"]:
-            chs += guild.get_channel(x).mention + "\n"
+        for a in data["servers"][str(guild.id)]["temps"]:
+            chs += guild.get_channel(int(a)).mention + "\n"
         emb.add_field(name="Active Temps", value=chs)
     emb.set_footer(text=f"Angefragt von {author.display_name} ID:{author.id}")
     return emb
 
 
-@bot.hybrid_command(name="manage")
+def create_user_panel(author: Member):
+    return Embed(color=discord.Color.green(),
+                title="VoiceManager",
+                timestamp=datetime.datetime.now(),
+                description="Manage deinen Temp Channel") \
+        .add_field(name="Channel Name", value="Change Channel Name", inline=False) \
+        .add_field(name="Member Limit", value="Change Member Limit", inline=False) \
+        .add_field(name="Managers", value="Add Managers to this Channel", inline=False) \
+        .add_field(name="Visibillity", value="Change Channel visibillity for other users", inline=False) \
+        .set_footer(text=f"Angefragt von {author.display_name} ID:{author.id}")
+
+
+def create_user_view():
+    return View() \
+        .add_item(
+        Button(
+            style=ButtonStyle.blurple,
+            label="Channel Name",
+            custom_id=str(CustomIDs.CHANNELNAME))) \
+        .add_item(
+        Button(
+            style=ButtonStyle.green,
+            label="Member Limit",
+            custom_id=str(CustomIDs.MEMBERLIMIT))) \
+        .add_item(
+        Button(
+            style=ButtonStyle.success,
+            label="Managers",
+            custom_id=str(CustomIDs.MANAGERS))) \
+        .add_item(
+        Button(
+            style=ButtonStyle.red,
+            label="Visibillity",
+            custom_id=str(CustomIDs.VISIBILITY))) \
+        .add_item(
+        Button(
+            style=ButtonStyle.grey,
+            label="Back",
+            custom_id=str(CustomIDs.USERBACK)))
+
+
+@bot.hybrid_command(name="manage", description="Manage the Tempchannels of your Server")
 @commands.guild_only()
 @check(check_perms)
 async def manage(ctx: Context):
-    emb = create_embed(ctx.author.roles[0].color, ctx.author, ctx.guild)
+    emb = create_admin_panel(discord.Color.green(), ctx.author, ctx.guild)
     v = create_view()
-
+    data["commands"] += 1
     await ctx.send(embed=emb, view=v)
+
+
+@bot.hybrid_command(name="stats", description="Stats of the Bot")
+async def stats(ctx: Context):
+    data["commands"] += 1
+    emb = Embed(title="VoiceManager Stats",
+                color=discord.Color.green(),
+                description="Hier sind die Stats vom Bot!",
+                timestamp=datetime.datetime.now())
+    emb.add_field(name="Commands used", value=str(data["commands"]))
+    emb.add_field(name="Interactions used", value=str(data["interactions"]))
+    emb.add_field(name="Servers", value=str(len(data["servers"])))
+    emb.add_field(name="Temp Channels created", value=str(data["temps"]))
+    emb.set_footer(text=f"Angefragt von {ctx.author.display_name} ID:{ctx.author.id}")
+    await ctx.send(embed=emb)
+
+
+@bot.hybrid_command(name="tempmanager", description="Manage your Tempchannel")
+async def tempmanager(ctx: Context):
+    data["commands"] += 1
+    if ctx.author.voice:
+        if str(ctx.author.voice.channel.id) in data["servers"][str(ctx.guild.id)]["temps"]:
+            if ctx.author.id in data["servers"][str(ctx.guild.id)]["temps"][str(ctx.author.voice.channel.id)]:
+                emb = create_user_panel(ctx.author)
+                view = create_user_view()
+                await ctx.send(embed=emb, view=view)
+            else:
+                await ctx.reply("Du bist kein Manager von diesem Channel", ephemeral=True, delete_after=5)
+        else:
+            await ctx.reply("Du bist in keinem Tempchannel!", ephemeral=True, delete_after=5)
+    else:
+        await ctx.reply("Du bist in keinem VoiceChannel", ephemeral=True, delete_after=5)
 
 
 """
@@ -175,13 +257,10 @@ async def manage(ctx: Context):
 
 @bot.event
 async def on_ready():
-    get_json_data.start()
+    get_json_data.start()  # starting the loop for gathering and saving data
     print(f"Ready as {bot.user.name}({bot.user.id}) {round(bot.latency * 1000)}ms")
-    try:
-        await bot.tree.sync(guild=discord.Object(id=915698061530001448))
-        print(f'Synced')
-    except Exception as e:
-        print(e)
+    await bot.tree.sync()
+    print("synced")
 
 
 async def create_emb_owner(i: Interaction):
@@ -324,9 +403,12 @@ async def on_interaction(i: Interaction):
         return
     if i.user.bot:
         return
+    if i.type == InteractionType.application_command:
+        return
     if i.user.id != int(i.message.embeds[0].footer.text.split("ID:")[1]):
         await i.message.reply(f"{i.user.mention} Du hast dieses Panel nicht angefordert!", delete_after=5)
         return
+    data["interactions"] += 1
     custom_id = i.data["custom_id"]
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.SHOWCHANNELS:
@@ -413,7 +495,8 @@ async def on_interaction(i: Interaction):
         await i.response.edit_message(embed=emb, view=view)
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.BACK:
-        await i.response.edit_message(embed=create_embed(i.user.roles[0].color, i.user, i.guild), view=create_view())
+        await i.response.edit_message(embed=create_admin_panel(i.user.roles[0].color, i.user, i.guild),
+                                      view=create_view())
 
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.SELECTADDCHANNELS:
@@ -488,7 +571,8 @@ async def on_interaction(i: Interaction):
 
         await create_emb_owner(i)
 
-        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!",
+                                      delete_after=5)
     ####################################################################################################################
     if CustomIDs(custom_id) == CustomIDs.SELECTREMOWNERPERMISSIONS:
         owner = Permissions(data["servers"][str(i.guild_id)]["config"]["owner"])
@@ -500,7 +584,8 @@ async def on_interaction(i: Interaction):
 
         await create_emb_owner(i)
 
-        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!",
+                                      delete_after=5)
     ####################################################################################################################
 
     if CustomIDs(custom_id) == CustomIDs.BUTTONFORSELECTROLE:
@@ -543,8 +628,8 @@ async def on_interaction(i: Interaction):
 
         await create_emb_role(i, i.guild.get_role(int(role)))
 
-        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
-
+        await i.response.send_message(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!",
+                                      delete_after=5)
 
     ####################################################################################################################
 
@@ -559,7 +644,15 @@ async def on_interaction(i: Interaction):
 
         await create_emb_role(i, i.guild.get_role(int(role)))
 
-        await i.response.send_mesage(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!", delete_after=5)
+        await i.response.send_mesage(f"{i.user.mention} Es wurden erfolgreich die Permissions geupdated!",
+                                     delete_after=5)
+
+    ####################################################################################################################
+    ####################################################################################################################
+    ####################################################################################################################
+
+    if CustomIDs(custom_id) == CustomIDs.CHANNELNAME:
+
 
 
 @bot.event
@@ -567,8 +660,8 @@ async def on_guild_channel_delete(ch: GuildChannel):
     if type(ch) == VoiceChannel:
         if ch.id in data["servers"][str(ch.guild.id)]["channels"]:
             data["servers"][str(ch.guild.id)]["channels"].remove(ch.id)
-        if ch.id in data["servers"][str(ch.guild.id)]["temps"]:
-            data["servers"][str(ch.guild.id)]["temps"].remove(ch.id)
+        if str(ch.id) in data["servers"][str(ch.guild.id)]["temps"]:
+            data["servers"][str(ch.guild.id)]["temps"].pop(str(ch.id))
 
 
 @bot.event
@@ -593,6 +686,7 @@ async def create_channel(memb: Member, cat: discord.CategoryChannel):
                                           category=cat,
                                           user_limit=5,
                                           reason="VoiceManager Temp Channel")
+
     for x in data["servers"][str(memb.guild.id)]["config"]:
         perms = Permissions(data["servers"][str(memb.guild.id)]["config"][x])
         permso = PermissionOverwrite()
@@ -603,8 +697,9 @@ async def create_channel(memb: Member, cat: discord.CategoryChannel):
             await ch.set_permissions(memb, overwrite=permso)
         else:
             await ch.set_permissions(memb.guild.get_role(int(x)), overwrite=permso)
-
-    data["servers"][str(guild.id)]["temps"].append(ch.id)
+    x = {}
+    data["servers"][str(guild.id)]["temps"][str(ch.id)] = [memb.id]
+    data["temps"] += 1
     return ch
 
 
@@ -612,10 +707,10 @@ async def create_channel(memb: Member, cat: discord.CategoryChannel):
 async def on_voice_state_update(memb: Member, bef: VoiceState, aft: VoiceState):
     guild = memb.guild
     if bef.channel:
-        if bef.channel.id in data["servers"][str(guild.id)]["temps"]:
+        if str(bef.channel.id) in data["servers"][str(guild.id)]["temps"]:
             if len(bef.channel.members) == 0:
                 await bef.channel.delete()
-                data["servers"][str(guild.id)]["temps"].remove(bef.channel.id)
+                data["servers"][str(guild.id)]["temps"].pop(str(bef.channel.id))
 
     if aft.channel:
         if aft.channel.id in data["servers"][str(guild.id)]["channels"]:
